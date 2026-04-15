@@ -1,0 +1,137 @@
+zabbix_export:
+  version: '6.0'
+  date: '2026-04-15T16:42:20Z'
+  groups:
+    -
+      uuid: 1a87bd3c85cb46989a9c02cedee8a65f
+      name: 'Proxmox Servers'
+  templates:
+    -
+      uuid: e806cf195bc04ea6b360bad442b4e5dd
+      template: 'Proxmox VE Backups'
+      name: 'Proxmox VE Backups'
+      groups:
+        -
+          name: 'Proxmox Servers'
+      items:
+        -
+          uuid: ea1a9682a39f4a08a0115e011ebd3d96
+          name: 'Proxmox: Get QEMU with Backup Configured'
+          key: 'proxmox.qemu.hasbackup[{HOST.IP},{$PROXMOX.URL.PORT},{$PROXMOX.TOKEN.ID},{$PROXMOX.TOKEN.SECRET},{HOST.HOST}]'
+          delay: 0;wd3
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: |
+            Configurado para rodar toda quarta-feira independente do horário.
+            
+            --------------------------
+            
+            Configured to run every Wednesday at anytime.
+      discovery_rules:
+        -
+          uuid: 8cfca20e53754e289483929c13e26c12
+          name: 'Proxmox: Get QEMU with Backup Configured'
+          type: DEPENDENT
+          key: proxmox.backup.discovery
+          delay: '0'
+          lifetime: 1d
+          item_prototypes:
+            -
+              uuid: 962e57a4bd7c4e5792fd034252de5e8c
+              name: 'Proxmox: VM [{#NODE.NAME}/{#VM.NAME} ({#BACKUP.STORAGE})] Backup Log'
+              type: TRAP
+              key: 'proxmox.backup.log[{#NODE.NAME},{#VM.ID},{#BACKUP.STORAGE}]'
+              delay: '0'
+              history: 30d
+              trends: '0'
+              value_type: LOG
+              description: |
+                Salva o log do Backup programado no Proxmox.
+                
+                ------------------------------
+                
+                It has the log of the scheduled backup configured in Proxmox.
+            -
+              uuid: 08d351cfe9884eaea68df625e65e03bd
+              name: 'Proxmox: VM [{#NODE.NAME}/{#VM.NAME} ({#BACKUP.STORAGE})] Next Backup'
+              type: DEPENDENT
+              key: 'proxmox.backup.next[{#NODE.NAME},{#VM.ID},{#BACKUP.STORAGE}]'
+              delay: '0'
+              history: 1d
+              trends: '0'
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - '$.data[?(@.vmid == {#VM.ID} && @.node == "{#NODE.NAME}" && @.backup_storage == "{#BACKUP.STORAGE}")].next_backup'
+                -
+                  type: TRIM
+                  parameters:
+                    - '[]'
+              master_item:
+                key: 'proxmox.qemu.hasbackup[{HOST.IP},{$PROXMOX.URL.PORT},{$PROXMOX.TOKEN.ID},{$PROXMOX.TOKEN.SECRET},{HOST.HOST}]'
+            -
+              uuid: 38a4c7f7df504199a6df3f670d2fc574
+              name: 'Proxmox: VM [{#NODE.NAME}/{#VM.NAME} ({#BACKUP.STORAGE})] Backup Status'
+              type: TRAP
+              key: 'proxmox.backup.status[{#NODE.NAME},{#VM.ID},{#BACKUP.STORAGE}]'
+              delay: '0'
+              history: 30d
+              description: |
+                Verifica o Status do Backup programado no Proxmox.
+                
+                -----------------------
+                
+                Show the status of the scheduled backup in Proxmox.
+              trigger_prototypes:
+                -
+                  uuid: 00ea708a45054f9e8982de91a6db6546
+                  expression: 'last(/Proxmox VE Backups/proxmox.backup.status[{#NODE.NAME},{#VM.ID},{#BACKUP.STORAGE}])=0'
+                  name: 'Proxmox: VM [{#NODE.NAME}/{#VM.NAME} ({#BACKUP.STORAGE})]: Backup finished with error'
+                  priority: DISASTER
+          trigger_prototypes:
+            -
+              uuid: c24a319574f14782a8864fc39a6e8068
+              expression: 'fuzzytime(/Proxmox VE Backups/proxmox.backup.next[{#NODE.NAME},{#VM.ID},{#BACKUP.STORAGE}],86400)=1 and nodata(/Proxmox VE Backups/proxmox.backup.status[{#NODE.NAME},{#VM.ID},{#BACKUP.STORAGE}],676800)=1'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'fuzzytime(/Proxmox VE Backups/proxmox.backup.next[{#NODE.NAME},{#VM.ID},{#BACKUP.STORAGE}],86400)=0 and nodata(/Proxmox VE Backups/proxmox.backup.status[{#NODE.NAME},{#VM.ID},{#BACKUP.STORAGE}],676800)=0'
+              name: 'Proxmox: VM [{#NODE.NAME}/{#VM.NAME} ({#BACKUP.STORAGE})]: Backup not executed'
+              priority: HIGH
+              description: |
+                Configurado para um backup semanal com o pensamento que o backup demore no máximo 23hrs para concluir ( folga de 1 hora caso demore um pouco mais )
+                
+                --------------------------------------
+                
+                It is configured to a weekly backup with the idea that it takes, at maximum, 23 hours to conclude ( It waits +1 hour in case it takes a little longer than 23 hours to conclude )
+          master_item:
+            key: 'proxmox.qemu.hasbackup[{HOST.IP},{$PROXMOX.URL.PORT},{$PROXMOX.TOKEN.ID},{$PROXMOX.TOKEN.SECRET},{HOST.HOST}]'
+          lld_macro_paths:
+            -
+              lld_macro: '{#BACKUP.NEXT}'
+              path: $.next_backup
+            -
+              lld_macro: '{#BACKUP.STORAGE}'
+              path: $.backup_storage
+            -
+              lld_macro: '{#NODE.NAME}'
+              path: $.node
+            -
+              lld_macro: '{#VM.ID}'
+              path: $.vmid
+            -
+              lld_macro: '{#VM.NAME}'
+              path: $.name
+      macros:
+        -
+          macro: '{$PROXMOX.TOKEN.ID}'
+          value: USER@REALM!TOKENID
+          description: 'API tokens allow stateless access to most parts of the REST API by another system, software or API client.'
+        -
+          macro: '{$PROXMOX.TOKEN.SECRET}'
+          value: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+          description: 'Secret key.'
+        -
+          macro: '{$PROXMOX.URL.PORT}'
+          value: '8006'
+          description: 'The API uses the HTTPS protocol and the server listens to port 8006 by default.'
